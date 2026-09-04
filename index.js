@@ -1,30 +1,55 @@
-cons{
+const {
   default: makeWASocket,
   useMultiFileAuthState,
   DisconnectReason
 } = require("@whiskeysockets/baileys");
 
-const pino = require("pino");
+const P = require("pino");
+const readline = require("readline");
 
-const {
-  handleCommand,
-  runPlugins
-} = require("./handler");
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+});
 
-async function startLUXUNOVA() {
+const question = (text) =>
+  new Promise((resolve) => rl.question(text, resolve));
+
+async function startBot() {
   const { state, saveCreds } =
-    await useMultiFileAuthState("./session");
+    await useMultiFileAuthState("./auth_info");
 
   const sock = makeWASocket({
     auth: state,
-    logger: pino({ level: "silent" })
+    logger: P({ level: "silent" }),
+    printQRInTerminal: false
   });
 
   sock.ev.on("creds.update", saveCreds);
 
+  if (!state.creds.registered) {
+    const number = await question(
+      "WhatsApp number (+ නැතුව): "
+    );
+
+    const phoneNumber = number.replace(/\D/g, "");
+
+    console.log("\n⏳ Pairing code ලබාගනිමින්...\n");
+
+    const code = await sock.requestPairingCode(phoneNumber);
+
+    console.log("================================");
+    console.log("🔐 PAIRING CODE:", code);
+    console.log("================================\n");
+    console.log(
+      "WhatsApp → Settings → Linked Devices → Link a device → Link with phone number"
+    );
+  }
+
   sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
     if (connection === "open") {
-      console.log("🤖 LUXUNOVA ONLINE ✅");
+      console.log("\n✅ WhatsApp successfully linked!");
+      console.log("🤖 Bot is online!\n");
     }
 
     if (connection === "close") {
@@ -34,31 +59,14 @@ async function startLUXUNOVA() {
 
       if (shouldReconnect) {
         console.log("🔄 Reconnecting...");
-        startLUXUNOVA();
+        startBot();
       } else {
-        console.log("❌ Session logged out.");
+        console.log("❌ WhatsApp logged out.");
       }
-    }
-  });
-
-  sock.ev.on("messages.upsert", async ({ messages }) => {
-    const msg = messages[0];
-
-    if (!msg?.message || msg.key.fromMe) return;
-
-    const text =
-      msg.message.conversation ||
-      msg.message.extendedTextMessage?.text ||
-      "";
-
-    // Plugins
-    await runPlugins(sock, msg);
-
-    // Commands
-    if (text.trim().startsWith(".")) {
-      await handleCommand(sock, msg, text);
     }
   });
 }
 
-startLUXUNOVA();
+startBot().catch((err) => {
+  console.error("❌ Error:", err);
+});
