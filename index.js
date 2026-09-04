@@ -1,10 +1,15 @@
-const {
+cons{
   default: makeWASocket,
   useMultiFileAuthState,
   DisconnectReason
 } = require("@whiskeysockets/baileys");
 
 const pino = require("pino");
+
+const {
+  handleCommand,
+  runPlugins
+} = require("./handler");
 
 async function startLUXUNOVA() {
   const { state, saveCreds } =
@@ -19,10 +24,7 @@ async function startLUXUNOVA() {
 
   sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
     if (connection === "open") {
-      console.log("╔════════════════════════════╗");
-      console.log("║       🤖 LUXUNOVA         ║");
-      console.log("║       ONLINE ✅            ║");
-      console.log("╚════════════════════════════╝");
+      console.log("🤖 LUXUNOVA ONLINE ✅");
     }
 
     if (connection === "close") {
@@ -44,100 +46,17 @@ async function startLUXUNOVA() {
 
     if (!msg?.message || msg.key.fromMe) return;
 
-    const jid = msg.key.remoteJid;
-
     const text =
       msg.message.conversation ||
       msg.message.extendedTextMessage?.text ||
       "";
 
-    const command = text.trim().toLowerCase();
+    // Plugins
+    await runPlugins(sock, msg);
 
-    if (command === ".menu") {
-      await sock.sendMessage(jid, {
-        text:
-`╭━━━〔 🤖 LUXUNOVA 〕━━━╮
-┃
-┃   ✦ WELCOME TO LUXUNOVA
-┃
-┃   ⚡ GENERAL
-┃   • .ping
-┃   • .alive
-┃   • .owner
-┃   • .help
-┃
-┃   🛠️ TOOLS
-┃   • .time
-┃   • .date
-┃   • .calc
-┃   • .weather
-┃   • .short
-┃
-┃   ℹ️ INFO
-┃   • .info
-┃   • .uptime
-┃   • .version
-┃
-╰━━━━━━━━━━━━━━━━━━━━╯
-
-👇 Select a command from the menu.`
-      });
-    }
-
-    if (command === ".ping") {
-      await sock.sendMessage(jid, {
-        text: "🏓 *PONG!*\n\n⚡ LUXUNOVA is online."
-      });
-    }
-
-    if (command === ".alive") {
-      await sock.sendMessage(jid, {
-        text:
-`🤖 *LUXUNOVA*
-
-✅ Status: Online
-⚡ System: Active
-🚀 Version: V1.0.0`
-      });
-    }
-
-    if (command === ".owner") {
-      await sock.sendMessage(jid, {
-        text: "👑 *LUXUNOVA OWNER*\n\nOwner details will be added later."
-      });
-    }
-
-    if (command === ".help") {
-      await sock.sendMessage(jid, {
-        text:
-`📖 *LUXUNOVA HELP*
-
-Use:
-.menu
-.ping
-.alive
-.owner
-.help
-
-More features coming soon 🚀`
-      });
-    }
-
-    if (command === ".info") {
-      await sock.sendMessage(jid, {
-        text:
-`ℹ️ *LUXUNOVA INFO*
-
-🤖 Name: LUXUNOVA
-📦 Version: 1.0.0
-⚡ Status: Online`
-      });
-    }
-
-    if (command === ".version") {
-      await sock.sendMessage(jid, {
-        text: "📦 LUXUNOVA Version: *V1.0.0*"
-      });
+    // Commands
+    if (text.trim().startsWith(".")) {
+      await handleCommand(sock, msg, text);
     }
   });
 }
