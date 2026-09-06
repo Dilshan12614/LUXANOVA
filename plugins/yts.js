@@ -1,62 +1,54 @@
 const { cmd } = require("../command");
 const yts = require("yt-search");
+const { ytmp3 } = require("@vreden/youtube_scraper");
 
-cmd(
-  {
-    pattern: "yts",
-    alias: ["yts", "youtubesearch"],
-    react: "🔎",
-    desc: "Search YouTube videos",
-    category: "search",
-    filename: __filename,
-  },
-  async (
-    danuwa,
-    mek,
-    m,
-    {
-      from,
-      quoted,
-      q,
-      reply,
-    }
-  ) => {
-    try {
-      if (!q) return reply("*Please provide a search query!* 🔍");
+let searchCache = {};
 
-      reply("*Searching YouTube for you...* ⌛");
+cmd({
+  pattern: "yts",
+  alias: ["yts", "youtubesearch", "song"], // song කියලත් වැඩ
+  react: "🔎",
+  desc: "Search & Download YouTube song",
+  category: "downloader",
+  filename: __filename,
+}, async (danuwa, mek, m, { from, q, reply }) => {
+  try {
+    if (!q) return reply("*උදා:.yts despacito*");
 
-      const search = await yts(q);
+    await reply("*Searching...* 🔍");
+    const search = await yts(q);
+    if (!search.videos.length) return reply("*Results නෑ* ☹️");
 
-      if (!search || !search.all || search.all.length === 0) {
-        return reply("*No results found on YouTube.* ☹️");
-      }
+    const results = search.videos.slice(0, 10);
+    searchCache[from] = results;
 
-      const results = search.videos.slice(0, 10); 
-      let formattedResults = results.map((v, i) => (
-        `🎬 *${i + 1}. ${v.title}*\n📅 ${v.ago} | ⌛ ${v.timestamp} | 👁️ ${v.views.toLocaleString()} views\n🔗 ${v.url}`
-      )).join("\n\n");
+    let list = results.map((v, i) =>
+      `🎬 *${i + 1}.* ${v.title}\n⌛ ${v.timestamp}`
+    ).join("\n\n");
 
-      const caption = `  
-Your youtube search results
-─────────────────────────
-🔎 *Query*: ${q}
-${formattedResults}
-   `;
+    await danuwa.sendMessage(from, {
+      image: { url: "https://github.com/DANUWA-MD/DANUWA-MD/blob/main/images/yts.png?raw=true" },
+      caption: `*Your youtube search results*\n─────────────────────────\n🔎 *Query*: ${q}\n\n${list}\n\n*Reply කරන්න number එක: උදා 3*`
+    }, { quoted: mek });
 
-      await danuwa.sendMessage(
-        from,
-        {
-          image: {
-            url: "https://github.com/DANUWA-MD/DANUWA-MD/blob/main/images/yts.png?raw=true",
-          },
-          caption,
-        },
-        { quoted: mek }
-      );
-    } catch (err) {
-      console.error(err);
-      reply("*An error occurred while searching YouTube.* ❌");
-    }
+    const response = await danuwa.waitForMessage(from, 30000);
+    if (!response) return;
+
+    let num = parseInt(response.body);
+    if (!num || num < 1 || num > 10) return;
+
+    let selected = searchCache[from][num - 1];
+    await reply(`*Downloading:* ${selected.title} ⬇️`);
+
+    let { url, title } = await ytmp3(selected.url);
+    await danuwa.sendMessage(from, {
+      audio: { url },
+      mimetype: 'audio/mpeg',
+      fileName: title + ".mp3"
+    }, { quoted: mek });
+
+  } catch (e) {
+    console.log(e);
+    reply("*Error: " + e.message + "*");
   }
-);
+});
