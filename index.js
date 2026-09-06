@@ -100,13 +100,50 @@ async function connectToWA() {
       });
     }, 5000);
 
-  } else if (connection === 'open') {
-    console.log('✅ DANUWA-MD connected to WhatsApp');
-  }
-});
+    danuwa.ev.on('connection.update', async (update) => {
+    const { connection, lastDisconnect } = update;
+
+    if (connection === 'close') {
+      const statusCode =
+        lastDisconnect?.error?.output?.statusCode;
+
+      console.log(`❌ WhatsApp disconnected. Code: ${statusCode}`);
+
+      if (statusCode === DisconnectReason.loggedOut) {
+        console.log('🚪 WhatsApp logged out. Please link again.');
+        return;
+      }
+
+      console.log('🔄 Reconnecting in 5 seconds...');
+
+      setTimeout(() => {
+        connectToWA().catch((err) => {
+          console.error('❌ Reconnect failed:', err.message);
+        });
+      }, 5000);
+
+    } else if (connection === 'open') {
+      console.log('✅ DANUWA-MD connected to WhatsApp');
 
       const up = `DANUWA-MD connected ✅\n\nPREFIX: ${prefix}`;
-      await danuwa.sendMessage(ownerNumber[0] + "@s.whatsapp.net", {
+
+      await danuwa.sendMessage(
+        ownerNumber[0] + "@s.whatsapp.net",
+        {
+          image: {
+            url: 'https://github.com/DANUWA-MD/DANUWA-MD/blob/main/images/DANUWA-MD.png?raw=true'
+          },
+          caption: up
+        }
+      );
+
+      fs.readdirSync("./plugins/").forEach((plugin) => {
+        if (path.extname(plugin).toLowerCase() === ".js") {
+          require(`./plugins/${plugin}`);
+        }
+      });
+    }
+  }); {
         image: { url: `https://github.com/DANUWA-MD/DANUWA-MD/blob/main/images/DANUWA-MD.png?raw=true` },
         caption: up
       });
