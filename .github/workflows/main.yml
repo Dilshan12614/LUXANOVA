@@ -34,8 +34,41 @@ jobs:
           PORT: 8000
         run: |
           nohup node index.js > bot.log 2>&1 &
+          echo $! > bot.pid
           sleep 10
+
+          echo "===== BOT LOG ====="
+          cat bot.log
 
       - name: Start Dashboard Tunnel
         run: |
-          cloudflared tunnel --url http://localhost:8000
+          nohup cloudflared tunnel --url http://localhost:8000 > tunnel.log 2>&1 &
+          echo $! > tunnel.pid
+
+          echo "Waiting for Cloudflare tunnel..."
+          sleep 10
+
+          echo "===== TUNNEL LOG ====="
+          cat tunnel.log
+
+          echo "======================================"
+          echo "🌐 DASHBOARD TUNNEL"
+          grep -o 'https://[-a-zA-Z0-9]*\.trycloudflare\.com' tunnel.log || true
+          echo "======================================"
+
+      - name: Keep Bot And Tunnel Running
+        run: |
+          echo "✅ DANUWA-MD is running..."
+          echo "⏳ Keeping GitHub Actions runner alive..."
+
+          while true; do
+            echo ""
+            echo "===== BOT LOG ====="
+            tail -n 20 bot.log || true
+
+            echo ""
+            echo "===== TUNNEL LOG ====="
+            tail -n 20 tunnel.log || true
+
+            sleep 60
+          done
