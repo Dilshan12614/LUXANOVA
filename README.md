@@ -1,2 +1,0 @@
-# LUXANOVA
-Whatsapp bot
