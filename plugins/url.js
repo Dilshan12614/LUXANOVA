@@ -1,17 +1,26 @@
-const { bot, getUrl, lang } = require('../lib/')
+const { cmd } = require("../command");
+const axios = require("axios");
 
-bot(
-  {
-    pattern: 'url ?(.*)',
-    fromMe: true,
-    desc: lang.plugins.url.desc,
-    type: 'misc',
-  },
-  async (message, match) => {
-    if (!message.reply_message || (!message.reply_message.image && !message.reply_message.video))
-      return await message.send(lang.plugins.url.usage)
-    await message.send(
-      await getUrl(await message.reply_message.downloadAndSaveMediaMessage('url'), match)
-    )
+cmd({
+  pattern: "url",
+  desc: "Download video from URL",
+  category: "downloader",
+  filename: __filename,
+}, async (conn, mek, m, { q, reply }) => {
+  try {
+    if (!q) return reply("*URL එකක් දෙන්න*\n*Ex: .url https://youtube.com/...*");
+    
+    await reply("*Downloading...* ⬇️");
+    const res = await axios.get(`https://api.danuwa.tech/dl?url=${q}`);
+    
+    if (!res.data.status) return reply("*Download කරන්න බෑ* ☹️");
+    
+    await conn.sendMessage(m.chat, {
+      video: { url: res.data.result },
+      caption: res.data.title
+    }, { quoted: mek });
+
+  } catch (e) {
+    reply("*Error:* " + e.message);
   }
-)
+});
