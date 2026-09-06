@@ -79,71 +79,16 @@ async function connectToWA() {
   });
 
   danuwa.ev.on('connection.update', async (update) => {
-  const { connection, lastDisconnect } = update;
-
-  if (connection === 'close') {
-    const statusCode =
-      lastDisconnect?.error?.output?.statusCode;
-
-    console.log(`❌ WhatsApp disconnected. Code: ${statusCode}`);
-
-    if (statusCode === DisconnectReason.loggedOut) {
-      console.log('🚪 WhatsApp logged out. Please link again.');
-      return;
-    }
-
-    console.log('🔄 Reconnecting in 5 seconds...');
-
-    setTimeout(() => {
-      connectToWA().catch((err) => {
-        console.error('❌ Reconnect failed:', err.message);
-      });
-    }, 5000);
-
-    danuwa.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect } = update;
-
     if (connection === 'close') {
-      const statusCode =
-        lastDisconnect?.error?.output?.statusCode;
-
-      console.log(`❌ WhatsApp disconnected. Code: ${statusCode}`);
-
-      if (statusCode === DisconnectReason.loggedOut) {
-        console.log('🚪 WhatsApp logged out. Please link again.');
-        return;
+      if (lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) {
+        connectToWA();
       }
-
-      console.log('🔄 Reconnecting in 5 seconds...');
-
-      setTimeout(() => {
-        connectToWA().catch((err) => {
-          console.error('❌ Reconnect failed:', err.message);
-        });
-      }, 5000);
-
     } else if (connection === 'open') {
       console.log('✅ DANUWA-MD connected to WhatsApp');
 
       const up = `DANUWA-MD connected ✅\n\nPREFIX: ${prefix}`;
-
-      await danuwa.sendMessage(
-        ownerNumber[0] + "@s.whatsapp.net",
-        {
-          image: {
-            url: 'https://github.com/DANUWA-MD/DANUWA-MD/blob/main/images/DANUWA-MD.png?raw=true'
-          },
-          caption: up
-        }
-      );
-
-      fs.readdirSync("./plugins/").forEach((plugin) => {
-        if (path.extname(plugin).toLowerCase() === ".js") {
-          require(`./plugins/${plugin}`);
-        }
-      });
-    }
-  }); {
+      await danuwa.sendMessage(ownerNumber[0] + "@s.whatsapp.net", {
         image: { url: `https://github.com/DANUWA-MD/DANUWA-MD/blob/main/images/DANUWA-MD.png?raw=true` },
         caption: up
       });
@@ -233,36 +178,8 @@ async function connectToWA() {
 
 ensureSessionFile();
 
-// ===============================
-// 🌐 LUXANOVA WEB DASHBOARD
-// ===============================
-
-app.use(express.static(path.join(__dirname, 'public')));
-
-const botStartTime = Date.now();
-
-app.get('/api/status', (req, res) => {
-  const memory = process.memoryUsage();
-
-  const uptimeSeconds = Math.floor(
-    (Date.now() - botStartTime) / 1000
-  );
-
-  const days = Math.floor(uptimeSeconds / 86400);
-  const hours = Math.floor((uptimeSeconds % 86400) / 3600);
-  const minutes = Math.floor((uptimeSeconds % 3600) / 60);
-  const seconds = uptimeSeconds % 60;
-
-  res.json({
-    bot: 'LUXANOVA MD',
-    status: 'ONLINE',
-    engine: 'Baileys',
-    uptime: `${days}d ${hours}h ${minutes}m ${seconds}s`,
-    ram: `${(memory.rss / 1024 / 1024).toFixed(1)} MB`,
-    node: process.version
-  });
+app.get("/", (req, res) => {
+  res.send("Hey, DANUWA-MD started✅");
 });
 
-app.listen(port, () => {
-  console.log(`🌐 LUXANOVA Dashboard: http://localhost:${port}`);
-});
+app.listen(port, () => console.log(`Server listening on http://localhost:${port}`));
