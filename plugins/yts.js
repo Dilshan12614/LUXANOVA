@@ -20,30 +20,24 @@ cmd(
   async (danuwa, mek, m, { from, q, reply }) => {
     try {
       if (!q) {
-        return reply("*Please provide a search query!* 🔍");
+        return reply("*Please provide a search query!* 🔍\n\nExample:\n.yts alan walker");
       }
 
-      await reply("*Searching YouTube for you...* ⌛");
+      await reply("*Searching YouTube...* ⌛");
 
       const search = await yts(q);
 
-      if (!search?.videos?.length) {
+      if (!search || !search.videos || !search.videos.length) {
         return reply("*No results found on YouTube.* ❌");
       }
 
       const results = search.videos.slice(0, 10);
 
-      ytsCache.set(from, {
-        results,
-        time: Date.now(),
-      });
-
       const formattedResults = results
         .map((v, i) => {
           return (
             `🎬 *${i + 1}. ${v.title}*\n` +
-            `📅 ${v.ago} | ⌛ ${v.timestamp}\n` +
-            `👁️ ${Number(v.views || 0).toLocaleString()} views`
+            `⏱️ ${v.timestamp} | 👁️ ${Number(v.views || 0).toLocaleString()}`
           );
         })
         .join("\n\n");
@@ -57,11 +51,11 @@ ${formattedResults}
 
 ╰━━━━━━━━━━━━━━━━━━━━╯
 
-📥 *Reply to this message with a number*
+📥 *Reply with a number*
 
 👉 *1 - ${results.length}*`;
 
-      await danuwa.sendMessage(
+      const sent = await danuwa.sendMessage(
         from,
         {
           image: {
@@ -74,16 +68,24 @@ ${formattedResults}
         }
       );
 
+      // Save search + message ID
+      ytsCache.set(from, {
+        results,
+        messageId: sent.key.id,
+        time: Date.now(),
+      });
+
     } catch (error) {
       console.error("[YTS SEARCH ERROR]", error);
 
       await reply(
         "*YouTube search failed!* ❌\n\n" +
-        (error.message || "Unknown error")
+        (error?.message || "Unknown error")
       );
     }
   }
 );
+
 
 // =====================================================
 // NUMBER REPLY HANDLER
@@ -95,6 +97,7 @@ cmd(
       try {
         const text = String(body || "").trim();
 
+        // Only 1 - 10
         if (!/^(10|[1-9])$/.test(text)) {
           return false;
         }
@@ -105,27 +108,40 @@ cmd(
           return false;
         }
 
-        const quoted =
-          mek.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-
-        if (!quoted) {
-          return false;
-        }
-
-        const from = mek.key?.remoteJid;
-
-        if (!from) {
-          return false;
-        }
-
-        const cached = ytsCache.get(from);
+        const cached = ytsCache.get(mek.key?.remoteJid);
 
         if (!cached) {
           return false;
         }
 
+        // Expire after 10 minutes
         if (Date.now() - cached.time > 10 * 60 * 1000) {
-          ytsCache.delete(from);
+          ytsCache.delete(mek.key.remoteJid);
+          return false;
+        }
+
+        // Must be a reply
+        const contextInfo =
+          mek.message?.extendedTextMessage?.contextInfo;
+
+        if (!contextInfo) {
+          return false;
+        }
+
+        const quotedMessage = contextInfo.quotedMessage;
+
+        if (!quotedMessage) {
+          return false;
+        }
+
+        // Check quoted message ID
+        const quotedStanzaId = contextInfo.stanzaId;
+
+        if (!quotedStanzaId) {
+          return false;
+        }
+
+        if (quotedStanzaId !== cached.messageId) {
           return false;
         }
 
@@ -160,7 +176,6 @@ cmd(
 
       const video = cached.results[number - 1];
 
-      // Selected result
       await danuwa.sendMessage(
         from,
         {
@@ -174,15 +189,14 @@ cmd(
 
 🔗 ${video.url}
 
-╰━━━━━━━━━━━━━━━━━━━━╯
-
-⚠️ Direct YouTube downloading is not handled by this plugin.`
+╰━━━━━━━━━━━━━━━━━━━━╯`
         },
         {
           quoted: mek,
         }
       );
 
+      // Delete cache after selection
       ytsCache.delete(from);
 
     } catch (error) {
