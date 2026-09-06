@@ -178,8 +178,36 @@ async function connectToWA() {
 
 ensureSessionFile();
 
-app.get("/", (req, res) => {
-  res.send("Hey, DANUWA-MD started✅");
+// ===============================
+// 🌐 LUXANOVA WEB DASHBOARD
+// ===============================
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+const botStartTime = Date.now();
+
+app.get('/api/status', (req, res) => {
+  const memory = process.memoryUsage();
+
+  const uptimeSeconds = Math.floor(
+    (Date.now() - botStartTime) / 1000
+  );
+
+  const days = Math.floor(uptimeSeconds / 86400);
+  const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+  const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+  const seconds = uptimeSeconds % 60;
+
+  res.json({
+    bot: 'LUXANOVA MD',
+    status: 'ONLINE',
+    engine: 'Baileys',
+    uptime: `${days}d ${hours}h ${minutes}m ${seconds}s`,
+    ram: `${(memory.rss / 1024 / 1024).toFixed(1)} MB`,
+    node: process.version
+  });
 });
 
-app.listen(port, () => console.log(`Server listening on http://localhost:${port}`));
+app.listen(port, () => {
+  console.log(`🌐 LUXANOVA Dashboard: http://localhost:${port}`);
+});
