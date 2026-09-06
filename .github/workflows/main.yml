@@ -1,5 +1,4 @@
 name: DANUWA-MD
-
 on:
   push:
     branches: [ main ]
@@ -9,7 +8,6 @@ jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 350
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,57 +20,8 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      - name: Install Cloudflared
-        run: |
-          curl -L --output cloudflared.deb \
-            https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-          sudo dpkg -i cloudflared.deb
-
-            - name: Start Bot
+      - name: Start Bot
+        run: node index.js
         env:
           SESSION_ID: ${{ secrets.SESSION_ID }}
           PORT: 8000
-        run: |
-          nohup node index.js > bot.log 2>&1 &
-          echo $! > bot.pid
-
-          sleep 10
-
-          echo "===== BOT LOG ====="
-          cat bot.log
-
-          echo "===== PORT 8000 CHECK ====="
-          curl -v http://127.0.0.1:8000 || true
-
-      - name: Start Dashboard Tunnel
-        run: |
-          nohup cloudflared tunnel --url http://localhost:8000 > tunnel.log 2>&1 &
-          echo $! > tunnel.pid
-
-          echo "Waiting for Cloudflare tunnel..."
-          sleep 10
-
-          echo "===== TUNNEL LOG ====="
-          cat tunnel.log
-
-          echo "======================================"
-          echo "🌐 DASHBOARD TUNNEL"
-          grep -o 'https://[-a-zA-Z0-9]*\.trycloudflare\.com' tunnel.log || true
-          echo "======================================"
-
-      - name: Keep Bot And Tunnel Running
-        run: |
-          echo "✅ DANUWA-MD is running..."
-          echo "⏳ Keeping GitHub Actions runner alive..."
-
-          while true; do
-            echo ""
-            echo "===== BOT LOG ====="
-            tail -n 20 bot.log || true
-
-            echo ""
-            echo "===== TUNNEL LOG ====="
-            tail -n 20 tunnel.log || true
-
-            sleep 60
-          done
