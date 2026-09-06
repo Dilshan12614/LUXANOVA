@@ -38,7 +38,14 @@ cmd(
         });
       }
 
-      await reply(menuText.trim());
+      await danuwa.sendMessage(
+  from,
+  {
+    image: { url: "https://n.uguu.se/PbeEXJzq.jpg" },
+    caption: menuText.trim()
+  },
+  { quoted: mek }
+);
     } catch (err) {
       console.error(err);
       reply("❌ Error generating menu.");
