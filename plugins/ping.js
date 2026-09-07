@@ -1,20 +1,37 @@
-export default {
-    command: 'ping',
-    aliases: ['p', 'pong'],
-    category: 'general',
-    description: 'Check bot response time',
-    usage: '.ping',
-    isPrefixless: true,
-    async handler(sock, message, _args) {
-        const start = Date.now();
-        const chatId = message.key.remoteJid;
-        const sent = await sock.sendMessage(chatId, {
-            text: 'Pinging...'
-        });
-        const end = Date.now();
-        await sock.sendMessage(chatId, {
-            text: `🏓 Pong!\nLatency: ${end - start}ms`,
-            edit: sent.key
-        });
+const { cmd } = require("../command");
+
+cmd(
+  {
+    pattern: "ping",
+    alias: ["p", "pong"],
+    react: "🏓",
+    desc: "Check bot response time",
+    category: "general",
+    filename: __filename,
+  },
+  async (danuwa, mek, m, { from, reply }) => {
+    try {
+      const start = Date.now();
+
+      const sent = await danuwa.sendMessage(from, {
+        text: "🏓 Pinging..."
+      });
+
+      const latency = Date.now() - start;
+
+      await danuwa.sendMessage(
+        from,
+        {
+          text: `🏓 *PONG!*\n\n⚡ *Latency:* ${latency}ms`
+        },
+        {
+          quoted: mek
+        }
+      );
+
+    } catch (error) {
+      console.error("Ping Error:", error);
+      reply("❌ Ping command error!");
     }
-};
+  }
+);
