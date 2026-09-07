@@ -2,65 +2,57 @@ const { cmd } = require("../command");
 const yts = require("yt-search");
 
 // =====================================================
-// YTS RESULT CACHE
+// YOUTUBE RESULT CACHE
 // =====================================================
 
-const ytsCache = new Map();
+const searchCache = new Map();
 
-const CACHE_TIME = 5 * 60 * 1000; // 5 minutes
+const CACHE_TIME = 5 * 60 * 1000;
 const MAX_RESULTS = 10;
 
 // =====================================================
-// CLEAN OLD CACHE
+// AUTO DELETE OLD RESULTS
 // =====================================================
 
 setInterval(() => {
   const now = Date.now();
 
-  for (const [key, data] of ytsCache.entries()) {
+  for (const [messageId, data] of searchCache.entries()) {
     if (now - data.time > CACHE_TIME) {
-      ytsCache.delete(key);
+      searchCache.delete(messageId);
     }
   }
 }, 60 * 1000);
 
 // =====================================================
-// GET TEXT FROM MESSAGE
+// GET MESSAGE TEXT
 // =====================================================
 
-function getMessageText(mek) {
-  try {
-    return (
-      mek?.message?.conversation ||
-      mek?.message?.extendedTextMessage?.text ||
-      mek?.message?.imageMessage?.caption ||
-      mek?.message?.videoMessage?.caption ||
-      ""
-    ).trim();
-  } catch {
-    return "";
-  }
+function getText(message) {
+  return (
+    message?.message?.conversation ||
+    message?.message?.extendedTextMessage?.text ||
+    message?.message?.imageMessage?.caption ||
+    message?.message?.videoMessage?.caption ||
+    ""
+  ).trim();
 }
 
 // =====================================================
 // GET QUOTED MESSAGE ID
 // =====================================================
 
-function getQuotedId(mek) {
-  try {
-    return (
-      mek?.message?.extendedTextMessage?.contextInfo?.stanzaId ||
-      mek?.message?.imageMessage?.contextInfo?.stanzaId ||
-      mek?.message?.videoMessage?.contextInfo?.stanzaId ||
-      null
-    );
-  } catch {
-    return null;
-  }
+function getQuotedId(message) {
+  return (
+    message?.message?.extendedTextMessage?.contextInfo?.stanzaId ||
+    message?.message?.imageMessage?.contextInfo?.stanzaId ||
+    message?.message?.videoMessage?.contextInfo?.stanzaId ||
+    null
+  );
 }
 
 // =====================================================
-// YOUTUBE SEARCH COMMAND
+// YTS COMMAND
 // =====================================================
 
 cmd(
@@ -81,11 +73,14 @@ cmd(
         return reply(
           `❌ *Please enter a search query!*\n\n` +
           `📌 Example:\n` +
-          `*.yts Lil Peep*`
+          `*.yts Ranja Hiruty*`
         );
       }
 
-      // Search reaction
+      // ===============================================
+      // SEARCH REACTION
+      // ===============================================
+
       await danuwa.sendMessage(from, {
         react: {
           text: "🔎",
@@ -93,9 +88,9 @@ cmd(
         },
       });
 
-      // =================================================
-      // SEARCH YOUTUBE
-      // =================================================
+      // ===============================================
+      // YOUTUBE SEARCH
+      // ===============================================
 
       const result = await yts(query);
 
@@ -108,9 +103,9 @@ cmd(
 
       const videos = result.videos.slice(0, MAX_RESULTS);
 
-      // =================================================
-      // FORMAT RESULTS
-      // =================================================
+      // ===============================================
+      // CREATE RESULT MESSAGE
+      // ===============================================
 
       let text = "";
 
@@ -135,24 +130,24 @@ cmd(
       });
 
       text +=
-        `\n💡 *Reply with a number 1-${videos.length} ` +
-        `to select a video.*\n\n`;
+        `\n📌 *Reply to this message with 1-${videos.length}*\n` +
+        `to select a video.\n\n`;
 
       text += `✨ *Powered by LUXANOVA*`;
 
-      // =================================================
-      // SEND SEARCH MESSAGE
-      // =================================================
+      // ===============================================
+      // SEND MESSAGE
+      // ===============================================
+
+      let sentMessage;
 
       const thumbnail =
         videos[0]?.thumbnail ||
         videos[0]?.image;
 
-      let sent;
-
       if (thumbnail) {
         try {
-          sent = await danuwa.sendMessage(
+          sentMessage = await danuwa.sendMessage(
             from,
             {
               image: {
@@ -164,13 +159,13 @@ cmd(
               quoted: mek,
             }
           );
-        } catch (e) {
-          console.log("Thumbnail error:", e);
+        } catch (error) {
+          console.log("Thumbnail failed:", error);
 
-          sent = await danuwa.sendMessage(
+          sentMessage = await danuwa.sendMessage(
             from,
             {
-              text,
+              text: text,
             },
             {
               quoted: mek,
@@ -178,10 +173,10 @@ cmd(
           );
         }
       } else {
-        sent = await danuwa.sendMessage(
+        sentMessage = await danuwa.sendMessage(
           from,
           {
-            text,
+            text: text,
           },
           {
             quoted: mek,
@@ -189,20 +184,29 @@ cmd(
         );
       }
 
-      // =================================================
-      // SAVE RESULTS
-      // =================================================
+      // ===============================================
+      // SAVE BY MESSAGE ID
+      // ===============================================
 
-      const messageId = sent?.key?.id;
+      const messageId = sentMessage?.key?.id;
 
-      ytsCache.set(from, {
-        time: Date.now(),
-        messageId,
-        videos,
-        query,
-      });
+      if (messageId) {
+        searchCache.set(messageId, {
+          videos: videos,
+          query: query,
+          chatId: from,
+          time: Date.now(),
+        });
 
-      // Success reaction
+        console.log(
+          `✅ YTS cache saved: ${messageId}`
+        );
+      }
+
+      // ===============================================
+      // SUCCESS REACTION
+      // ===============================================
+
       await danuwa.sendMessage(from, {
         react: {
           text: "✅",
@@ -212,13 +216,6 @@ cmd(
 
     } catch (error) {
       console.error("YTS Search Error:", error);
-
-      await danuwa.sendMessage(from, {
-        react: {
-          text: "❌",
-          key: mek.key,
-        },
-      });
 
       return reply(
         `❌ *YouTube Search Failed!*\n\n` +
@@ -236,38 +233,46 @@ cmd(
   {
     filter: async (mek) => {
       try {
-        const text = getMessageText(mek);
+        const text = getText(mek);
 
-        // Only numbers
-        if (!/^\d+$/.test(text)) {
-          return false;
-        }
-
-        const from = mek?.key?.remoteJid;
-
-        if (!from) {
-          return false;
-        }
-
-        const data = ytsCache.get(from);
-
-        if (!data) {
-          return false;
-        }
-
-        // Must be replying to the YTS result message
-        const quotedId = getQuotedId(mek);
-
-        if (data.messageId && quotedId !== data.messageId) {
+        // ONLY numbers
+        if (!/^[0-9]+$/.test(text)) {
           return false;
         }
 
         const number = Number(text);
 
-        return (
-          number >= 1 &&
-          number <= data.videos.length
-        );
+        if (number < 1 || number > MAX_RESULTS) {
+          return false;
+        }
+
+        // Must be a reply
+        const quotedId = getQuotedId(mek);
+
+        if (!quotedId) {
+          return false;
+        }
+
+        // Check exact YTS message
+        const cached = searchCache.get(quotedId);
+
+        if (!cached) {
+          return false;
+        }
+
+        // Check expiry
+        if (Date.now() - cached.time > CACHE_TIME) {
+          searchCache.delete(quotedId);
+          return false;
+        }
+
+        // Store selected info on message
+        mek.__ytsSelection = {
+          number,
+          cache: cached,
+        };
+
+        return true;
 
       } catch (error) {
         console.error("YTS Filter Error:", error);
@@ -278,30 +283,31 @@ cmd(
 
   async (danuwa, mek, m, { from, reply }) => {
     try {
-      const text = getMessageText(mek);
-      const number = Number(text);
+      // ===============================================
+      // GET DATA FROM FILTER
+      // ===============================================
 
-      const data = ytsCache.get(from);
+      const selection = mek.__ytsSelection;
 
-      if (!data) {
-        return reply(
-          `❌ *Search results expired!*\n\n` +
-          `Please search again using *.yts <query>*`
-        );
+      if (!selection) {
+        return;
       }
 
-      const video = data.videos[number - 1];
+      const { number, cache } = selection;
+
+      const video = cache.videos[number - 1];
 
       if (!video) {
         return reply("❌ Invalid selection.");
       }
 
-      // =================================================
+      // ===============================================
       // SELECTED VIDEO
-      // =================================================
+      // ===============================================
 
-      let response =
+      const text =
         `╭━━━〔 🎵 *SELECTED VIDEO* 〕━━━╮\n\n` +
+        `🔢 *Number:* ${number}\n` +
         `🎬 *Title:* ${video.title}\n` +
         `⏱️ *Duration:* ${video.timestamp || "Unknown"}\n` +
         `👀 *Views:* ${
@@ -312,14 +318,14 @@ cmd(
         `📺 *Channel:* ${
           video.author?.name || "Unknown"
         }\n\n` +
-        `🔗 *URL:*\n${video.url}\n\n` +
+        `🔗 *YouTube URL:*\n${video.url}\n\n` +
         `╰━━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
         `✨ *Powered by LUXANOVA*`;
 
       await danuwa.sendMessage(
         from,
         {
-          text: response,
+          text: text,
         },
         {
           quoted: mek,
@@ -328,7 +334,7 @@ cmd(
 
     } catch (error) {
       console.error("YTS Selection Error:", error);
-      return reply("❌ Error while selecting YouTube result.");
+      return reply("❌ Error selecting YouTube video.");
     }
   }
 );
