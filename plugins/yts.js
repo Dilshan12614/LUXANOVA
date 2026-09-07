@@ -2,7 +2,7 @@ const { cmd } = require("../command");
 const yts = require("yt-search");
 
 // =====================================================
-// YOUTUBE RESULT CACHE
+// YOUTUBE SEARCH CACHE
 // =====================================================
 
 const searchCache = new Map();
@@ -11,32 +11,18 @@ const CACHE_TIME = 5 * 60 * 1000;
 const MAX_RESULTS = 10;
 
 // =====================================================
-// AUTO DELETE OLD RESULTS
+// CLEAN EXPIRED CACHE
 // =====================================================
 
 setInterval(() => {
   const now = Date.now();
 
-  for (const [messageId, data] of searchCache.entries()) {
+  for (const [id, data] of searchCache.entries()) {
     if (now - data.time > CACHE_TIME) {
-      searchCache.delete(messageId);
+      searchCache.delete(id);
     }
   }
 }, 60 * 1000);
-
-// =====================================================
-// GET MESSAGE TEXT
-// =====================================================
-
-function getText(message) {
-  return (
-    message?.message?.conversation ||
-    message?.message?.extendedTextMessage?.text ||
-    message?.message?.imageMessage?.caption ||
-    message?.message?.videoMessage?.caption ||
-    ""
-  ).trim();
-}
 
 // =====================================================
 // GET QUOTED MESSAGE ID
@@ -47,12 +33,13 @@ function getQuotedId(message) {
     message?.message?.extendedTextMessage?.contextInfo?.stanzaId ||
     message?.message?.imageMessage?.contextInfo?.stanzaId ||
     message?.message?.videoMessage?.contextInfo?.stanzaId ||
+    message?.message?.documentMessage?.contextInfo?.stanzaId ||
     null
   );
 }
 
 // =====================================================
-// YTS COMMAND
+// YOUTUBE SEARCH
 // =====================================================
 
 cmd(
@@ -77,21 +64,6 @@ cmd(
         );
       }
 
-      // ===============================================
-      // SEARCH REACTION
-      // ===============================================
-
-      await danuwa.sendMessage(from, {
-        react: {
-          text: "🔎",
-          key: mek.key,
-        },
-      });
-
-      // ===============================================
-      // YOUTUBE SEARCH
-      // ===============================================
-
       const result = await yts(query);
 
       if (!result?.videos?.length) {
@@ -103,15 +75,14 @@ cmd(
 
       const videos = result.videos.slice(0, MAX_RESULTS);
 
-      // ===============================================
-      // CREATE RESULT MESSAGE
-      // ===============================================
+      // =================================================
+      // FORMAT
+      // =================================================
 
-      let text = "";
-
-      text += `╭━━━〔 🎧 *YOUTUBE SEARCH* 〕━━━╮\n`;
-      text += `┃ 🔎 *Query:* ${query}\n`;
-      text += `╰━━━━━━━━━━━━━━━━━━━━━━╯\n\n`;
+      let text =
+        `╭━━━〔 🎧 *YOUTUBE SEARCH* 〕━━━╮\n` +
+        `┃ 🔎 *Query:* ${query}\n` +
+        `╰━━━━━━━━━━━━━━━━━━━━━━╯\n\n`;
 
       videos.forEach((video, index) => {
         text +=
@@ -130,29 +101,24 @@ cmd(
       });
 
       text +=
-        `\n📌 *Reply to this message with 1-${videos.length}*\n` +
-        `to select a video.\n\n`;
+        `\n💡 *Reply to this message with 1-${videos.length}*\n` +
+        `to select a video.\n\n` +
+        `✨ *Powered by LUXANOVA*`;
 
-      text += `✨ *Powered by LUXANOVA*`;
+      // =================================================
+      // SEND RESULT
+      // =================================================
 
-      // ===============================================
-      // SEND MESSAGE
-      // ===============================================
+      const thumbnail = videos[0]?.thumbnail;
 
-      let sentMessage;
-
-      const thumbnail =
-        videos[0]?.thumbnail ||
-        videos[0]?.image;
+      let sent;
 
       if (thumbnail) {
         try {
-          sentMessage = await danuwa.sendMessage(
+          sent = await danuwa.sendMessage(
             from,
             {
-              image: {
-                url: thumbnail,
-              },
+              image: { url: thumbnail },
               caption: text,
             },
             {
@@ -160,12 +126,12 @@ cmd(
             }
           );
         } catch (error) {
-          console.log("Thumbnail failed:", error);
+          console.log("YTS thumbnail error:", error);
 
-          sentMessage = await danuwa.sendMessage(
+          sent = await danuwa.sendMessage(
             from,
             {
-              text: text,
+              text,
             },
             {
               quoted: mek,
@@ -173,10 +139,10 @@ cmd(
           );
         }
       } else {
-        sentMessage = await danuwa.sendMessage(
+        sent = await danuwa.sendMessage(
           from,
           {
-            text: text,
+            text,
           },
           {
             quoted: mek,
@@ -184,28 +150,24 @@ cmd(
         );
       }
 
-      // ===============================================
-      // SAVE BY MESSAGE ID
-      // ===============================================
+      // =================================================
+      // SAVE RESULT USING SENT MESSAGE ID
+      // =================================================
 
-      const messageId = sentMessage?.key?.id;
+      const resultMessageId = sent?.key?.id;
 
-      if (messageId) {
-        searchCache.set(messageId, {
-          videos: videos,
-          query: query,
-          chatId: from,
+      if (resultMessageId) {
+        searchCache.set(resultMessageId, {
+          videos,
+          query,
           time: Date.now(),
         });
 
         console.log(
-          `✅ YTS cache saved: ${messageId}`
+          "✅ YTS result saved:",
+          resultMessageId
         );
       }
-
-      // ===============================================
-      // SUCCESS REACTION
-      // ===============================================
 
       await danuwa.sendMessage(from, {
         react: {
@@ -215,11 +177,17 @@ cmd(
       });
 
     } catch (error) {
-      console.error("YTS Search Error:", error);
+      console.error("YTS ERROR:", error);
+
+      await danuwa.sendMessage(from, {
+        react: {
+          text: "❌",
+          key: mek.key,
+        },
+      });
 
       return reply(
-        `❌ *YouTube Search Failed!*\n\n` +
-        `Please try again later.`
+        "❌ *YouTube Search Failed!*\n\nPlease try again later."
       );
     }
   }
@@ -231,12 +199,22 @@ cmd(
 
 cmd(
   {
-    filter: async (mek) => {
-      try {
-        const text = getText(mek);
+    /*
+     * IMPORTANT:
+     * DO NOT use async here.
+     *
+     * index.js does:
+     * handler.filter(...)
+     *
+     * without await.
+     */
 
-        // ONLY numbers
-        if (!/^[0-9]+$/.test(text)) {
+    filter: (replyText, data) => {
+      try {
+        const text = String(replyText || "").trim();
+
+        // Only numbers
+        if (!/^\d+$/.test(text)) {
           return false;
         }
 
@@ -246,14 +224,20 @@ cmd(
           return false;
         }
 
-        // Must be a reply
-        const quotedId = getQuotedId(mek);
+        // Must be a reply to another message
+        const message = data?.message;
+
+        if (!message) {
+          return false;
+        }
+
+        const quotedId = getQuotedId(message);
 
         if (!quotedId) {
           return false;
         }
 
-        // Check exact YTS message
+        // Check if quoted message is a YTS result
         const cached = searchCache.get(quotedId);
 
         if (!cached) {
@@ -266,16 +250,10 @@ cmd(
           return false;
         }
 
-        // Store selected info on message
-        mek.__ytsSelection = {
-          number,
-          cache: cached,
-        };
-
         return true;
 
       } catch (error) {
-        console.error("YTS Filter Error:", error);
+        console.error("YTS FILTER ERROR:", error);
         return false;
       }
     },
@@ -283,31 +261,42 @@ cmd(
 
   async (danuwa, mek, m, { from, reply }) => {
     try {
-      // ===============================================
-      // GET DATA FROM FILTER
-      // ===============================================
+      const text =
+        mek?.message?.conversation ||
+        mek?.message?.extendedTextMessage?.text ||
+        "";
 
-      const selection = mek.__ytsSelection;
+      const number = Number(String(text).trim());
 
-      if (!selection) {
+      const quotedId = getQuotedId(mek);
+
+      if (!quotedId) {
         return;
       }
 
-      const { number, cache } = selection;
+      const cached = searchCache.get(quotedId);
 
-      const video = cache.videos[number - 1];
-
-      if (!video) {
-        return reply("❌ Invalid selection.");
+      if (!cached) {
+        return reply(
+          `❌ *Search result expired or not found!*\n\n` +
+          `Please search again using:\n` +
+          `*.yts <query>*`
+        );
       }
 
-      // ===============================================
-      // SELECTED VIDEO
-      // ===============================================
+      const video = cached.videos[number - 1];
 
-      const text =
+      if (!video) {
+        return reply("❌ *Invalid selection.*");
+      }
+
+      // =================================================
+      // SELECTED VIDEO
+      // =================================================
+
+      const response =
         `╭━━━〔 🎵 *SELECTED VIDEO* 〕━━━╮\n\n` +
-        `🔢 *Number:* ${number}\n` +
+        `🔢 *Number:* ${number}\n\n` +
         `🎬 *Title:* ${video.title}\n` +
         `⏱️ *Duration:* ${video.timestamp || "Unknown"}\n` +
         `👀 *Views:* ${
@@ -325,7 +314,7 @@ cmd(
       await danuwa.sendMessage(
         from,
         {
-          text: text,
+          text: response,
         },
         {
           quoted: mek,
@@ -333,8 +322,11 @@ cmd(
       );
 
     } catch (error) {
-      console.error("YTS Selection Error:", error);
-      return reply("❌ Error selecting YouTube video.");
+      console.error("YTS SELECTION ERROR:", error);
+
+      return reply(
+        "❌ Error while selecting YouTube video."
+      );
     }
   }
 );
